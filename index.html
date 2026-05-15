@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flaticon Multi-URL Bulk Downloader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; }
+        
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(229, 231, 235, 1);
+        }
+
+        /* Custom scrollbar for the queue */
+        #downloadGrid::-webkit-scrollbar {
+            width: 6px;
+        }
+        #downloadGrid::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        #downloadGrid::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        
+        .card-appear {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900">
+
+    <div class="max-w-5xl mx-auto p-4 md:p-10">
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-extrabold text-slate-900 mb-3 tracking-tight">Flaticon Bulk Downloader</h1>
+            <p class="text-slate-600 max-w-2xl mx-auto">
+                Paste multiple Flaticon URLs below. We will automatically generate and download the high-quality source files for 
+                <span class="font-bold text-blue-600">16px, 24px, 32px, 64px, 128px, 256px, and 512px</span> for every icon.
+            </p>
+        </header>
+
+        <main class="glass-morphism rounded-3xl shadow-2xl overflow-hidden mb-8">
+            <div class="p-6 md:p-8 space-y-6">
+                <div>
+                    <label for="urlList" class="block text-sm font-bold text-slate-700 mb-2">Paste Flaticon Image URLs (One per line)</label>
+                    <textarea id="urlList" rows="6" 
+                        class="w-full p-4 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-mono text-sm leading-relaxed"
+                        placeholder="https://cdn-icons-png.flaticon.com/64/1384/1384060.png&#10;https://cdn-icons-png.flaticon.com/64/733/733547.png">https://cdn-icons-png.flaticon.com/64/1384/1384060.png</textarea>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4 pt-2">
+                    <div class="flex flex-wrap gap-2">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-widest mr-2 py-1">Targets:</span>
+                        <div id="sizeChips" class="flex flex-wrap gap-2">
+                            <!-- Chips will be generated here -->
+                        </div>
+                    </div>
+                    
+                    <button onclick="generateQueue()" id="btnGenerate"
+                        class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-10 rounded-2xl transition-all shadow-lg hover:shadow-blue-200 active:scale-95 flex items-center justify-center gap-2">
+                        <span>Process All Icons</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <div id="resultsArea" class="hidden space-y-6">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <div>
+                    <h2 class="text-xl font-extrabold text-slate-800">Download Queue</h2>
+                    <p id="statsLabel" class="text-sm text-slate-500">0 icons detected, 0 total downloads ready.</p>
+                </div>
+                <button onclick="downloadAll()" id="btnDownloadAll"
+                    class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl transition-all flex items-center gap-2 shadow-md hover:shadow-emerald-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                    Download Everything Now
+                </button>
+            </div>
+            
+            <div id="downloadGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-2">
+                <!-- Grouped cards appear here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Feedback Toast -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-2xl shadow-2xl transform translate-y-32 transition-transform duration-500 font-semibold z-50">
+        Message goes here
+    </div>
+
+    <script>
+        const sizes = [16, 24, 32, 64, 128, 256, 512];
+        const urlListInput = document.getElementById('urlList');
+        const downloadGrid = document.getElementById('downloadGrid');
+        const resultsArea = document.getElementById('resultsArea');
+        const toast = document.getElementById('toast');
+        const statsLabel = document.getElementById('statsLabel');
+
+        // Create the chips in UI
+        sizes.forEach(size => {
+            const span = document.createElement('span');
+            span.className = "bg-slate-100 text-slate-600 px-3 py-1 rounded-lg text-xs font-bold border border-slate-200";
+            span.innerText = `${size}px`;
+            document.getElementById('sizeChips').appendChild(span);
+        });
+
+        function showToast(msg) {
+            toast.innerText = msg;
+            toast.classList.remove('translate-y-32');
+            setTimeout(() => toast.classList.add('translate-y-32'), 3500);
+        }
+
+        function generateQueue() {
+            const rawText = urlListInput.value.trim();
+            if (!rawText) {
+                showToast("Please enter at least one Flaticon URL.");
+                return;
+            }
+
+            const urls = rawText.split('\n').map(u => u.trim()).filter(u => u.length > 0);
+            downloadGrid.innerHTML = '';
+            resultsArea.classList.remove('hidden');
+
+            let totalDownloads = 0;
+
+            urls.forEach((originalUrl, urlIndex) => {
+                // Regex to identify flaticon CDN pattern: .../size/path/to/id.png
+                // Group 1: Prefix, Group 2: The path after the size
+                const flaticonRegex = /^(https:\/\/cdn-icons-png\.flaticon\.com\/)\d+\/(.+)$/i;
+                const match = originalUrl.match(flaticonRegex);
+
+                if (!match) {
+                    createErrorCard(originalUrl);
+                    return;
+                }
+
+                const prefix = match[1];
+                const suffix = match[2];
+                const iconId = suffix.split('/').pop().replace('.png', '');
+
+                // Create a container for this specific icon group
+                const groupContainer = document.createElement('div');
+                groupContainer.className = "bg-white p-5 rounded-2xl border border-slate-200 shadow-sm card-appear";
+                
+                let sizeLinksHtml = '';
+                sizes.forEach(size => {
+                    const newUrl = `${prefix}${size}/${suffix}`;
+                    totalDownloads++;
+                    sizeLinksHtml += `
+                        <a href="${newUrl}" download="flaticon_${iconId}_${size}.png" 
+                           class="download-item flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg group transition-colors border border-transparent hover:border-slate-100">
+                            <div class="flex items-center gap-3">
+                                <span class="w-8 text-xs font-bold text-slate-400">${size}px</span>
+                                <img src="${newUrl}" class="w-6 h-6 object-contain opacity-80 group-hover:opacity-100" onerror="this.src='https://placehold.co/24x24?text=X'">
+                            </div>
+                            <span class="text-[10px] text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">DOWNLOAD</span>
+                        </a>
+                    `;
+                });
+
+                groupContainer.innerHTML = `
+                    <div class="flex items-center gap-4 mb-4 border-b border-slate-50 pb-3">
+                        <div class="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100">
+                            <img src="${prefix}64/${suffix}" class="max-w-[32px] max-h-[32px]">
+                        </div>
+                        <div class="overflow-hidden">
+                            <h3 class="font-bold text-slate-800 truncate text-sm">Icon ID: ${iconId}</h3>
+                            <p class="text-xs text-slate-400 truncate">${originalUrl}</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                        ${sizeLinksHtml}
+                    </div>
+                `;
+
+                downloadGrid.appendChild(groupContainer);
+            });
+
+            statsLabel.innerText = `${urls.length} icons processed, ${totalDownloads} high-quality files ready.`;
+            showToast(`Ready! Generated ${totalDownloads} download links.`);
+            resultsArea.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function createErrorCard(url) {
+            const err = document.createElement('div');
+            err.className = "bg-red-50 p-5 rounded-2xl border border-red-100 flex items-center gap-4 card-appear";
+            err.innerHTML = `
+                <div class="text-red-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+                <div class="overflow-hidden">
+                    <p class="font-bold text-red-800 text-sm">Invalid Format</p>
+                    <p class="text-xs text-red-600 truncate">${url}</p>
+                </div>
+            `;
+            downloadGrid.appendChild(err);
+        }
+
+        function downloadAll() {
+            const links = document.querySelectorAll('.download-item');
+            if (links.length === 0) return;
+
+            const btn = document.getElementById('btnDownloadAll');
+            const originalText = btn.innerHTML;
+            
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            showToast(`Starting sequence for ${links.length} files...`);
+
+            links.forEach((link, index) => {
+                // We use a staggered delay to prevent browser block or crash
+                setTimeout(() => {
+                    link.click();
+                    
+                    // Update UI status on last item
+                    if (index === links.length - 1) {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        showToast("Batch download complete!");
+                    }
+                }, index * 200); 
+            });
+        }
+    </script>
+</body>
+</html>
